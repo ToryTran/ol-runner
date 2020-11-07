@@ -164,7 +164,7 @@ async function doJob(auth, data, id = Date.now()) {
           _.get(jsonData, 'props.pageProps.initialState')
         );
       } else {
-        loggers.log.log({
+        loggers.log.error({
           status: res.status,
           companyInfo,
         });
