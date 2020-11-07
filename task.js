@@ -2,23 +2,16 @@ const axios = require('axios').default;
 const puppeteer = require('puppeteer');
 const loggers = require('./logUtil.js').init();
 const _ = require('lodash');
+require('dotenv').config();
 
 const fetchCompanyDetail = require('./fetchUtil.js').fetchCompanyDetail;
 const browserOption = {
   headless: false,
-  // executablePath: '/snap/chromium/1350/usr/lib/chromium-browser/chrome',
-  // executablePath: '/opt/google/chrome/google-chrome',
-  // product: 'firefox',
-  // extraPrefsFirefox: {
-  // Enable additional Firefox logging from its protocol implementation
-  // 'remote.log.level': 'Trace',
-  // },
-  // Make browser logs visible
-  // dumpio: true,
   devtools: false,
   ignoreHTTPSErrors: true,
   slowMo: 0,
   args: [
+    '--start-minimized',
     '--disable-gpu',
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -45,12 +38,11 @@ const userAgents = [
 ];
 
 let runProccessMangement = new Set();
+let serverUrl = process.env.HOST;
 
 async function getCompanyLink(start, end) {
   try {
-    const res = await axios.get(
-      `http://54.187.11.227:8000/query?start=${start}&end=${end}`
-    );
+    const res = await axios.get(`${serverUrl}/query?start=${start}&end=${end}`);
     return res && res.data ? res.data : [];
   } catch (error) {
     console.error(error);
@@ -59,7 +51,7 @@ async function getCompanyLink(start, end) {
 }
 
 async function updateCompanyStatus(id, status = 404) {
-  await axios.put(`http://54.187.11.227:8000/update-company-status`, {
+  await axios.put(`${serverUrl}/update-company-status`, {
     company_id: id,
     status,
   });
@@ -91,7 +83,7 @@ async function insertCompanyData(id, company) {
       description: company.description || company.summarySection,
       founded: company.founded,
     };
-    await axios.post(`http://54.187.11.227:8000/insert-company`, companyInfo);
+    await axios.post(`${serverUrl}/insert-company`, companyInfo);
     if (id != company.companyId) {
       await updateCompanyStatus(id, 404);
     }
@@ -192,17 +184,18 @@ async function doJob(auth, data, id = Date.now()) {
 }
 
 (async () => {
-  const startCId = Number(process.argv[2]);
-  const endCId = Number(process.argv[3]);
-  const emails = process.argv.slice(5, 100);
+  const startCId = Number(process.env.START);
+  const endCId = Number(process.env.END);
+  const emails = process.env.EMAILS.split(',');
 
   do {
     if (!runProccessMangement.size) {
       const data = await getCompanyLink(startCId, endCId);
       console.log('DATA: ', data);
+
       const paging = Math.round(data.length / emails.length);
       emails.forEach((email, index) => {
-        const auth = { email, password: process.argv[4] };
+        const auth = { email, password: process.env.PASSWORD };
         doJob(auth, data.slice(index * paging, (index + 1) * paging));
       });
     }
