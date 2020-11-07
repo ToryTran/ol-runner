@@ -6,6 +6,15 @@ const _ = require('lodash');
 const fetchCompanyDetail = require('./fetchUtil.js').fetchCompanyDetail;
 const browserOption = {
   headless: false,
+  // executablePath: '/snap/chromium/1350/usr/lib/chromium-browser/chrome',
+  // executablePath: '/opt/google/chrome/google-chrome',
+  // product: 'firefox',
+  // extraPrefsFirefox: {
+  // Enable additional Firefox logging from its protocol implementation
+  // 'remote.log.level': 'Trace',
+  // },
+  // Make browser logs visible
+  // dumpio: true,
   devtools: false,
   ignoreHTTPSErrors: true,
   slowMo: 0,
@@ -142,7 +151,7 @@ async function doJob(auth, data, id = Date.now()) {
       });
 
       console.log(
-        `[${id}]status: ${res.status ? res.status : '200'} `,
+        `[${auth.email}]status: ${res.status ? res.status : '200'} `,
         companyInfo
       );
       if (res.status === 429) {
@@ -191,13 +200,12 @@ async function doJob(auth, data, id = Date.now()) {
     if (!runProccessMangement.size) {
       const data = await getCompanyLink(startCId, endCId);
       console.log('DATA: ', data);
-
       const paging = Math.round(data.length / emails.length);
       emails.forEach((email, index) => {
         const auth = { email, password: process.argv[4] };
         doJob(auth, data.slice(index * paging, (index + 1) * paging));
       });
     }
-    await sleep(!runProccessMangement.size ? 5000 : 1000 * 60 * 5);
+    await sleep(10000);
   } while (true);
 })();
