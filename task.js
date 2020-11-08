@@ -38,6 +38,7 @@ const userAgents = [
 ];
 
 let runProccessMangement = new Set();
+let scrapedCompany = new Set();
 let serverUrl = process.env.HOST;
 
 async function getCompanyLink(start, end) {
@@ -128,6 +129,10 @@ async function doJob(auth, data, id = Date.now()) {
 
     for (let i = 0; i < data.length; i++) {
       const companyInfo = data[i];
+
+      if (scrapedCompany.has(companyInfo.company_id)) continue;
+
+      scrapedCompany.add(companyInfo.company_id);
       if (
         !companyInfo ||
         !companyInfo.team_name ||
@@ -187,17 +192,21 @@ async function doJob(auth, data, id = Date.now()) {
   const startCId = Number(process.env.START);
   const endCId = Number(process.env.END);
   const emails = process.env.EMAILS.split(',');
-
+  let data = [];
   do {
     if (!runProccessMangement.size) {
-      const data = await getCompanyLink(startCId, endCId);
+      if (scrapedCompany.size >= data.length) {
+        data = await getCompanyLink(startCId, endCId);
+        scrapedCompany.clear();
+      }
       console.log('DATA: ', data);
-
-      const paging = Math.round(data.length / emails.length);
-      emails.forEach((email, index) => {
-        const auth = { email, password: process.env.PASSWORD };
-        doJob(auth, data.slice(index * paging, (index + 1) * paging));
-      });
+      if (data && data.length) {
+        const paging = Math.round(data.length / emails.length);
+        emails.forEach((email, index) => {
+          const auth = { email, password: process.env.PASSWORD };
+          doJob(auth, data.slice(index * paging, (index + 1) * paging));
+        });
+      }
     }
     await sleep(10000);
   } while (true);
