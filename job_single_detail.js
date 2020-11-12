@@ -101,6 +101,7 @@ async function insertCompanyData(id, company) {
       website: company.website,
       ownership: company.ownership,
       totalFunding: Number(company.totalFunding || "0"),
+      companyFundingInfo: JSON.stringify(company.companyFundingInfo),
       teamName: company.teamName,
       totalRevenue: Number(company.revenue || "0"),
       totalEmployees: Number(company.employeeCount || "0"),
