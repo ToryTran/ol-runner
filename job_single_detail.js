@@ -8,12 +8,18 @@ const path = require("path");
 const hash = require("object-hash");
 const mysql = require("mysql");
 
+const fs = require("fs");
+
+const Stream = require("stream");
+const readline = require("readline");
+
 const connection = mysql.createConnection({
   host: process.env.DB_HOST,
   database: process.env.DB_DATABASE,
   port: process.env.DB_PORT,
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD});
+  password: process.env.DB_PASSWORD,
+});
 connection.connect();
 
 const loggers = winston.createLogger({
@@ -31,7 +37,7 @@ const DB = winston.createLogger({
       filename: `${path.join(__dirname, `/logs`)}/data-%DATE%.log`,
       datePattern: "YYYY-MM-DD",
       // zippedArchive: true,
-      maxSize: "100m",
+      maxSize: "200m",
       maxFiles: "30d",
     }),
   ],
@@ -84,6 +90,28 @@ function getObjectFromLog(data, id) {
     return false;
   }
 }
+const getFileDataByLine = (filePath, cbFn) => {
+  if (!fs.existsSync(filePath)) {
+    // console.log('FILE NOT EXIST');
+    return 0;
+  }
+  let inStream = fs.createReadStream(filePath);
+  let outStream = new Stream();
+  return new Promise((resolve, reject) => {
+    let rl = readline.createInterface(inStream, outStream);
+    rl.on("line", async function (line) {
+      cbFn(line);
+    });
+
+    rl.on("error", function (err) {
+      console.log(err);
+    });
+
+    rl.on("close", function () {
+      resolve("");
+    });
+  });
+};
 const userAgents = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36",
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/`201`00101 Firefox/64.0",
@@ -103,7 +131,7 @@ let runProccessMangement = new Set();
 let scrapedCompany = new Set();
 let serverUrl = process.env.HOST;
 let CATEGORIES = new Map();
-let lastInsertComCatTime = Date.now() - 30 * 60 * 60 * 1000; 
+let lastInsertComCatTime = Date.now() - 30 * 60 * 60 * 1000;
 
 async function getCompanyLink(start, end) {
   try {
@@ -268,14 +296,17 @@ async function doJob(auth, data, id = Date.now()) {
   }
 }
 
-function InsertCompCat() {
-  await sleep(10000);
+async function InsertCompCat() {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
   const logFilePath = path.join(
-    __dirname, `/logs/data-${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}.log`
+    __dirname,
+    `/logs/data-${yesterday.getFullYear()}-${
+      yesterday.getMonth() + 1
+    }-${yesterday.getDate()}.log`
   );
+  console.log("insert File: ", logFilePath);
   let data = [];
   await getFileDataByLine(logFilePath, async (line) => {
     try {
@@ -293,17 +324,21 @@ function InsertCompCat() {
       console.log("E --> ", error);
     }
   });
-  
+  console.log("Need insert  ", data.length);
   if (data.length) {
     await sleep(20000);
-    await connection.query(
-      `INSERT IGNORE INTO owler_com_cat (company_id, cat_id) VALUES ?`,
-      data,
-      function (error, results, fields) {
-        if (error) throw error;
-        console.log(results.insertId);
-      }
-    );
+    try {
+      await connection.query(
+        `INSERT IGNORE INTO owler_com_cat (company_id, cat_id) VALUES ?`,
+        [data],
+        function (error, results, fields) {
+          if (error) throw error;
+          console.log(results.insertId);
+        }
+      );
+    } catch (error) {
+      console.log("E Insert DB com cat--> ", error);
+    }
   }
 }
 
@@ -320,17 +355,26 @@ function InsertCompCat() {
       }
     }
   );
-  
+  await sleep(20000);
+  console.log("cat --> ", CATEGORIES.size);
   const startCId = Number(process.env.START);
   const endCId = Number(process.env.END);
   const emails = process.env.EMAILS.split(",");
   let data = [];
   do {
     try {
+      await sleep(60000);
+
+      if (Date.now() - lastInsertComCatTime >= 24 * 60 * 60 * 1000) {
+        console.log("InsertCompCat");
+        await InsertCompCat();
+        lastInsertComCatTime = Date.now();
+      }
+
       if (scrapedCompany.size >= data.length) {
         data = await getCompanyLink(startCId, endCId);
         scrapedCompany.clear();
-        console.log("Data: ", data);
+        console.log("Data: ", data.length);
       }
       if (data && data.length) {
         const paging = Math.round(data.length / emails.length);
@@ -347,11 +391,6 @@ function InsertCompCat() {
             runProccessMangement.add(jobId);
           }
         });
-      }
-      await sleep(60000);
-      if (Date.now() - lastInsertComCatTime >= (24 * 60 * 60 * 1000)) {
-        InsertCompCat();
-        lastInsertComCatTime = Date.now();
       }
     } catch (error) {
       console.log(error);
